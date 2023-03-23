@@ -29,9 +29,3 @@ class security():
 
 
 
-# print('Plaintext:', "assignment")
-# print(hexdump.dump(bytes("assignment", encoding='utf-8'), sep=" "))
-# print('Ciphertext:', obj)
-# print(hexdump.dump(bytes(obj, encoding='utf-8'), sep=" "))
-# # print('Decrypted:', obj1)
-# # print(hexdump.dump(bytes(obj1, encoding='utf-8'), sep=" "))
