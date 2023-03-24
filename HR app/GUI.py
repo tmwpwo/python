@@ -1,19 +1,18 @@
+#!/usr/bin/env python3
 
+from cryptography.fernet import Fernet
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtWidgets import *
 from PyQt6.QtGui import QIcon
 import sys
 import time
-import random
-import hexdump
 import linecache
+import json
 
-
-
-def_data = {"employees": ["john", "mike", "marry", "chris" , "aaron" , "paul"],
-     "salaries":         [ 4000,   1000, 50000, 10000,30000,50000],
-     "qualifications":   ["GCSE,BSc", "GCSE", "GCSE, BSc,Msc,PhD", "GCSE,B.E", "MBA", "GCSE,BSc,Msc,PhD"],
-     "departments":      ["IT", "HR", 'Academic', "IT", "HR", "reserach"],
+def_data = {"employees": ["john",       "mike",     "marry",                "chris" ,       "aaron" ,       "paul"],
+     "salaries":         [ 4000,         1000,       50000,                 10000,          30000,          50000],
+     "qualifications":   ["GCSE,BSc",   "GCSE",     "GCSE, BSc,Msc,PhD",    "GCSE,B.E",     "MBA",          "GCSE,BSc,Msc,PhD"],
+     "departments":      ["IT",         "HR",       'Academic',             "IT",           "HR",           "reserach"],
      }
 class PersonalInfo:
     def __init__(self, name: str, salary: int, qualifications, departaments):
@@ -25,7 +24,6 @@ class PersonalInfo:
     def __str__(self) -> str:
         return "\n{\n name: " + self.name + ",\t\n salary: " + str(self.salary) + ",\t\n qualifications: " + str(self.qualifications) + ",\t\n departments: " + str(self.departaments) + "\n}"
         
-
 def getDB():
     database  = dict()
     for i, person in enumerate(def_data["employees"]):
@@ -37,7 +35,6 @@ def getDB():
              )
     return database    
 
-
 def emp(y):
     my_string =''
     for x in y:
@@ -48,43 +45,65 @@ def indexing(name):
     for i in range(len(def_data["employees"])):
         if name == def_data["employees"][i]:
             return i
-
-
-
-
-
-
-
-class security():
-    def encrypt(key, plaintext):
         
-        plaintext = list(plaintext)#Convert the plaintext to a list of characters
-        random.seed(key)
+class security:
+    def __init__(self, key=None):
+            
+        if key:
+            self.key = key
+        else:
+            if self.is_key():
+                self.key = self.get_key().encode()
+            else:
+                self.key = Fernet.generate_key()
+                self.store_key()
         
-        keystream = [random.choice('ABCDEFGHIJKLMNOPQRSTUVWXYZ') for _ in range(len(plaintext))]# Generate a random stream of characters to use as the keystream
+        self.cipher_suite = Fernet(self.key)
         
+    def encrypt(self, data):
+        encoded_data = data.encode()
+        encrypted_data = self.cipher_suite.encrypt(encoded_data)
+        return encrypted_data
         
-        ciphertext = [chr(ord(a) ^ ord(b)) for (a, b) in zip(plaintext, keystream)]# Perform the encryption by XORing the plaintext with the keystream
-        
-        return ''.join(ciphertext)
+    def decrypt(self, encrypted_data):
+        decrypted_data = self.cipher_suite.decrypt(encrypted_data)
+        decoded_data = decrypted_data.decode()
+        return decoded_data
+    
+    @staticmethod
+    def get_key() -> str:
+        with open("./.env/KEY", "r") as f:
+            return f.readlines()[0]
 
-    def decrypt(key, ciphertext):
-        random.seed(key)
-        
-        keystream = [random.choice('ABCDEFGHIJKLMNOPQRSTUVWXYZ') for _ in range(len(ciphertext))]# Generate the keystream using the same method as the encrypt() function
-        
-        
-        plaintext = [chr(ord(a) ^ ord(b)) for (a, b) in zip(ciphertext, keystream)]# Decrypt the ciphertext by XORing it with the keystream
-        
-        return ''.join(plaintext)
+    @staticmethod
+    def is_key() -> bool:
+        with open("./.env/KEY", "r") as f:
+            return len(f.readlines()) >= 1
 
+    def store_key(self):
+        with open("./.env/KEY", "w") as f:
+            f.write(self.key.decode())
 
+    @staticmethod
+    def get_users_from_db():
+        with open("./database.txt", "r") as f:
+            return [json.loads(line) for line in f.readlines()]
 
+    @staticmethod
+    def add_user_to_db(user: dict):
+        with open("./database.txt", "a") as f:
+            f.writelines(json.dumps(user) + "\n")
 
-
+    def update_db(self, login: str, pswd: str):
+        print(self.key)
+        l_enc = sec.encrypt(login).decode()
+        p_enc = sec.encrypt(pswd).decode()
+        user = {"login": l_enc, "password": p_enc}
+        self.add_user_to_db(user)
 
 class LoginWindow(QWidget):
-    def __init__(self):
+    def __init__(self, sec: security):
+        self.sec = sec
         QWidget.__init__(self)
         self.setWindowTitle('Login')
         self.setWindowIcon(QIcon(''))
@@ -117,24 +136,23 @@ class LoginWindow(QWidget):
         self.status.setStyleSheet('font-size: 25px; color: red;')
         layout.addWidget(self.status,                   3, 0, 1, 3)
 
-
-
-
     def checkCredential(self):
         username = self.lineEdits['Username'].text()
         password = self.lineEdits['Password'].text()
+  
+        users = sec.get_users_from_db()
 
-        
-        f = linecache.getline(r"database.txt", 1)
-        l = linecache.getline(r"database.txt", 2)
-        if username == security.decrypt(2137, f):
-            if password == security.decrypt(2137, l):
-                time.sleep(1)
-                self.mainApp = Window()
-                self.mainApp.show()
-                self.close()
-            else:
-                self.status.setText('incorrect password or username')
+        for user in users:
+            dec_db_username = self.sec.decrypt(user["login"].encode())
+            dec_db_password = self.sec.decrypt(user["password"].encode())
+            authenicated = password == dec_db_password and username == dec_db_username
+            if authenicated: break
+
+        if authenicated:
+            time.sleep(0.3)
+            self.mainApp = Window()
+            self.mainApp.show()
+            self.close()
         else:
             self.status.setText('incorrect password or username')                
 
@@ -149,7 +167,6 @@ class SearchButton(QPushButton):
         if text:
             self.parent_component.setPlaceholder(text)
   
-
 # Subclass QMainWindow to customize application's main window
 class Window(QWidget):
     def __init__(self):
@@ -157,11 +174,9 @@ class Window(QWidget):
         self.layout = QGridLayout()
         self.setLayout(self.layout)
 
-
         self.db = getDB()
 
         self.setWindowTitle("Employee database")
-
 
         self.searchbar = QLineEdit(self)
         self.completer = QCompleter(list(self.db.keys()))
@@ -174,7 +189,6 @@ class Window(QWidget):
         self.addbutton = QPushButton("add", clicked=self.addEmployee)
         self.deletebutton = QPushButton("delete", clicked=self.deleteEmployee)
         self.editbutton = QPushButton("edit",clicked=self.editEmployee)
-
 
         # Set the central widget of the Window.
         self.layout.addWidget(self.searchbar,       0, 0)
@@ -190,8 +204,7 @@ class Window(QWidget):
             return self.db[query]
         else:
             return None
-
-
+        
     def setPlaceholder(self, content):
         self.textHolder.setText(content.__str__())
 
@@ -210,9 +223,6 @@ class Window(QWidget):
         self.mainApp.show()
         self.close()
         
-  
-
-
 class addingWindow(QWidget):
     db1 = def_data
     def __init__(self):
@@ -261,26 +271,38 @@ class addingWindow(QWidget):
 
         self.layout.addWidget(self.returnbutton,    4, 2, 1, 1)
         
-    def saving(self):
+    def saving(self): 
         name = self.searchbar.text()
-        salary = int(self.searchbar1.text())
-        qualifications = self.searchbar2.text()
-        department = self.searchbar3.text()
+        if name in def_data["employees"]:
+            name = name + "2"
+            salary = int(self.searchbar1.text())
+            qualifications = self.searchbar2.text()
+            department = self.searchbar3.text()
+            def_data["employees"].append(name)
+            def_data["salaries"].append(salary)
+            def_data["qualifications"].append(qualifications)
+            def_data["departments"].append(department)
+            self.mainApp = Window()
+            self.mainApp.show()
+            self.close()
+        else:
+            salary = int(self.searchbar1.text())
+            qualifications = self.searchbar2.text()
+            department = self.searchbar3.text()
 
-        def_data["employees"].append(name)
-        def_data["salaries"].append(salary)
-        def_data["qualifications"].append(qualifications)
-        def_data["departments"].append(department)
+            def_data["employees"].append(name)
+            def_data["salaries"].append(salary)
+            def_data["qualifications"].append(qualifications)
+            def_data["departments"].append(department)
 
-        self.mainApp = Window()
-        self.mainApp.show()
-        self.close()
+            self.mainApp = Window()
+            self.mainApp.show()
+            self.close()
 
     def returning(self):
         self.mainApp = Window()
         self.mainApp.show()
         self.close()    
-
 
 class deleteWindow(QWidget):
     db1 = def_data
@@ -312,8 +334,7 @@ class deleteWindow(QWidget):
         self.returnbutton = QPushButton('return', clicked=self.returning)
 
         self.layout.addWidget(self.returnbutton,       2, 0)
-        
-        
+                
     def deleting(self):
         name = self.deletingemployee.text()
         
@@ -331,8 +352,6 @@ class deleteWindow(QWidget):
         self.mainApp = Window()
         self.mainApp.show()
         self.close()        
-
-
 
 class editingWindow(QWidget):
     db1 = def_data
@@ -355,40 +374,29 @@ class editingWindow(QWidget):
         self.searchbar.setCompleter(self.completer)
         
         self.editbutton = QPushButton("edit",clicked=self.edit)
+        self.returnbutton = QPushButton('return', clicked=self.returning)
 
         self.layout.addWidget(self.textHolder,       0, 0, 1, 1)
         self.layout.addWidget(self.searchbar,        0, 1, 1, 3)
-        self.layout.addWidget(self.editbutton,       5, 1, 1, 3)
-        
-        
-        
+        self.layout.addWidget(self.editbutton,       5, 3, 1, 1)
+        self.layout.addWidget(self.returnbutton,     5, 2, 1, 1)
+                
     def edit(self):
         name = self.searchbar.text()
         self.i = indexing(name)
         
-        
-        
-        print(def_data["employees"][self.i])
-
-
-
-
         self.textHolder1 = QLabel("name")
         self.textHolder1.setFixedSize(QSize(300,40))
         self.searchbar1 = QLineEdit(def_data["employees"][self.i])
-
         self.textHolder2 = QLabel("salary")
         self.textHolder2.setFixedSize(QSize(300,40))
         self.searchbar2 = QLineEdit(str(def_data["salaries"][self.i]))
-
         self.textHolder3 = QLabel("qualifications")
         self.textHolder3.setFixedSize(QSize(300,40))
         self.searchbar3 = QLineEdit(def_data["qualifications"][self.i])
-
         self.textHolder4 = QLabel("department")
         self.textHolder4.setFixedSize(QSize(300,40))
         self.searchbar4 = QLineEdit(def_data["departments"][self.i])
-
         self.layout.removeWidget(self.textHolder)
         self.layout.removeWidget(self.searchbar)
         self.layout.removeWidget(self.editbutton)
@@ -396,8 +404,8 @@ class editingWindow(QWidget):
         self.searchbar.deleteLater()
         self.editbutton.deleteLater()
         
-        self.layout.addWidget(self.textHolder1,      1, 0, 1, 1)
-        self.layout.addWidget(self.searchbar1,       1, 1, 1, 3)
+        self.layout.addWidget(self.textHolder1,     1, 0, 1, 1)
+        self.layout.addWidget(self.searchbar1,      1, 1, 1, 3)
 
         self.layout.addWidget(self.textHolder2,     2, 0, 1, 1)
         self.layout.addWidget(self.searchbar2,      2, 1, 1, 3)
@@ -409,11 +417,8 @@ class editingWindow(QWidget):
         self.layout.addWidget(self.searchbar4,      4, 1, 1, 3)
 
         self.savebutton = QPushButton('save', clicked=self.saving)
-
         self.layout.addWidget(self.savebutton,      5, 3, 1, 1)
-
         self.returnbutton = QPushButton('return', clicked=self.returning)
-
         self.layout.addWidget(self.returnbutton,    5, 2, 1, 1)
 
     def saving(self):
@@ -437,13 +442,9 @@ class editingWindow(QWidget):
         self.mainApp.show()
         self.close()
 
-
-
-        
-
-        
 if __name__ == '__main__':
-
+    sec = security()
+    sec.store_key()
     app = QApplication(sys.argv)
     app.setStyleSheet('''
                         QWidget {
@@ -452,10 +453,8 @@ if __name__ == '__main__':
                         QLineEdit {
                                 height: 50px;
                                 }
-                    ''')
- 
-    
-    loginWindow = LoginWindow()
+                    ''')   
+    loginWindow = LoginWindow(sec)
     loginWindow.show()
 
     try:
